@@ -1,0 +1,258 @@
+---
+title: "Application of Machine Learning for prediction"
+author: "Vineet W. Singh"
+date: "8 May 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+
+## Introduction
+
+A large amount of data about personal activity is being collected relatively 
+inexpensively due 
+to the wide spread proliferation of physical activity monitors such as the 
+Jawbone Up, Nike FuelBand, and Fitbit. 
+
+The devices collect data on the amount of physical activity done by 
+the owners(users) and some studies have been conducted in studying this data for 
+applications in predictive analytics. 
+
+In an original study: 
+*_Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H._*
+*_Qualitative Activity Recognition of Weight Lifting Exercises. _*
+*_Proceedings of 4th International Conference in Cooperation with SIGCHI _*
+*_(Augmented Human '13) . _*
+*_Stuttgart, Germany: ACM SIGCHI, 2013. _* available at: 
+http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har,
+the authors analyzed and studied the data collected from 6 volunteers, with an 
+ultimate aim of deciding whether it is 
+possible to detect/predict incorrect or improper ways of doing physical exercise. 
+
+The aim of this project is to try and partially emulate this more extensive study 
+and to use a similar approach in which the data collected by the original 
+authors of the study is used to make various models.  
+The models will then be evaluated on a cross validation set to choose 
+the models that have the best accuracy.  
+The accuracy of any models chosen, will be tested on a test set and finally 
+the model so chosen will be used to to predict the 
+outcome of a prediction/final test set.  
+
+The results for the prediction or final test set are stored on the "Coursera" 
+site and are initially unknown, as they are to be used for grading purposes 
+of a quiz. The results become known after a successfull attempt at the quiz 
+and can be used to quantify the accuracy of the model selected. 
+
+## Analysis
+The environment is initialized and the data is loaded with the following commands  
+
+```{r chunk1}
+#read data
+data<-read.csv('pml-training.csv')
+finalTest<-read.csv('pml-testing.csv')
+results<-read.csv('results.csv')
+```
+
+The data was initially explored with the following command:  
+
+```{r chunk2,eval=F}
+dim(data)
+head(data)
+summary(data)
+```
+
+From the dim command, it can be seen that there are a total of 19622 rows of data 
+of 160 variables each. 
+
+After viewing some rows of data and the summary of each column (variable), it can 
+be seen that some columns of some rows have no valid data. 
+The entries in these particular cells are one of the following values: 
+NA, #DIV/0 or blank.
+
+All columns are evaluated with the following commands to get the indices of those 
+columns that have less than 5% valid data. 
+ 
+```{r chunk3}
+res<-as.vector(which((colSums(is.na(data))/dim(data)[1])>=0.95))
+res1<-as.vector(which((colSums(data!="")/dim(data)[1])<0.05))
+```
+
+The columns whose indices are stored in the vectors are stripped out of the data 
+and as such only 53 columns with relevant data remain. 
+
+```{r chunk4}
+data1<-data[,-c(1,2,3,4,5,6,7,res,res1)]
+finalTest<-finalTest[,-c(1,2,3,4,5,6,7,res,res1)]
+```
+
+We can now proceed with making and evaluating models. 
+
+The problem is a classification problem. We need to build models that can 
+classify the data as belonging to one of 6 categories of results ranging from 
+A to E stored in the column "classe".  
+
+We will need to identify some suitable classification algorithms. 
+There is no need to consider regression algorithms. Trying to run regression 
+algorithms results in an error. 
+
+### Dividing the training data set for training, cross validation and testing. 
+
+```{r chunk5}
+suppressPackageStartupMessages(library(caret))
+set.seed(2212)
+inTrain<-createDataPartition(y=data1$classe,p=0.60,list=F)
+trainDt<-data1[inTrain,]
+bal<-data1[-inTrain,]
+inCV<-createDataPartition(y=bal$classe,p=0.50,list=F)
+cvDt<-bal[inCV,]
+testDt<-bal[-inCV,]
+```
+
+
+### Building the models
+The following models will be built using the caret package:  
+1) Random Forest.  
+2) Bootstrap aggregating (Bagging).  
+3) Bagging with boosting.  
+4) Linear Discriminant Analyses.  
+5) Naive Bayes.  
+
+
+```{r chunk6}
+suppressPackageStartupMessages(library(doMC))
+suppressPackageStartupMessages(library(tictoc))
+registerDoMC(cores=detectCores())
+tic("Random Forest")
+modelP1<-train(classe~.,method="rf",data=trainDt)
+toc()
+
+tic("Bagging")
+modelP2<-train(classe~.,method="treebag",data=trainDt)
+toc()
+
+tic("Bagging with Boosting")
+modelP3<-train(classe~.,method="gbm",data=trainDt)
+toc()
+
+tic("Linear Discriminant Analyses")
+modelP4<-train(classe~.,method="lda",data=trainDt)
+toc()
+
+tic("Naive Bayes")
+modelP5<-train(classe~.,method="nb",data=trainDt)
+toc()
+```
+
+The time required to build the models is also provided in the results.  
+
+### Testing: In sample errors
+The models are evaluated on training sets to find out the in-sample error. 
+
+```{r chunk7}
+insampP1<-predict(modelP1,trainDt)
+insampP2<-predict(modelP2,trainDt)
+insampP3<-predict(modelP3,trainDt)
+insampP4<-predict(modelP4,trainDt)
+suppressWarnings(insampP5<-predict(modelP5,trainDt))
+show("In sample error for Random Forests")
+confusionMatrix(insampP1,trainDt$classe)
+show("In sample error for Bootstrap aggregating (Bagging)")
+confusionMatrix(insampP2,trainDt$classe)
+show("In sample error for Bagging with boosting")
+confusionMatrix(insampP3,trainDt$classe)
+show("In sample error for Linear Discriminant Analyses")
+confusionMatrix(insampP4,trainDt$classe)
+show("in sample error for Naive Bayes")
+confusionMatrix(insampP5,trainDt$classe)
+```
+
+The algorithm with the best in-sample error is the Random Forests algorithm with 100% accuracy. 
+
+### Cross Vaidation Testing
+
+Next we use the cross validation set to check each of the five algorithms to find the one 
+with the best out of sample errors. 
+
+```{r chunk8}
+cvP1<-predict(modelP1,cvDt)
+cvP2<-predict(modelP2,cvDt)
+cvP3<-predict(modelP3,cvDt)
+cvP4<-predict(modelP4,cvDt)
+suppressWarnings(cvP5<-predict(modelP5,cvDt))
+show("Out of sample CV set error for Random Forests")
+confusionMatrix(cvP1,cvDt$classe)
+show("Out of sample CV set error for Bootstrap aggregating (Bagging)")
+confusionMatrix(cvP2,cvDt$classe)
+show("Out of sample CV set error for Bagging with boosting")
+confusionMatrix(cvP3,cvDt$classe)
+show("Out of sample CV set error for Linear Discriminant Analyses")
+confusionMatrix(cvP4,cvDt$classe)
+show("Out of sample CV set error for Naive Bayes")
+confusionMatrix(cvP5,cvDt$classe)
+```
+
+The best cross validation out of sample error is provided by the first model, 
+i.e. Random Forest Model. 
+
+### Accuracy of the model on the test set
+The random forest model is evaluated against the test set to get the final out of sample error and 
+this gives over 99% accuracy and less than 1% error in classifying the examples in the test set. 
+
+```{r chunk9}
+testP1<-predict(modelP1,testDt)
+show("Results for the test set")
+confusionMatrix(testP1,testDt$classe)
+```
+
+### Predictions and accuracy of predictions
+
+```{r chunk10}
+predictions<-predict(modelP1,finalTest)
+confusionMatrix(predictions,results$results)
+```
+
+The prediction accuracy is 100% for our final test/problem set using the random forest algorithm. 
+The random forest algorithm has a rather long computational time and uses a fair bit of computational resources.  
+
+Can the other tree based algorithms give an equally good result?  
+
+Evaluating the prediction accuracy of the other tree based algorithms might lead us to an algorithm 
+that gives acceptably good results but is not as computationally intensive as the random forest algorithm.  
+
+```{r chunk11}
+predictions2<-predict(modelP2,finalTest)
+confusionMatrix(predictions2,results$results)
+predictions3<-predict(modelP3,finalTest)
+confusionMatrix(predictions3,results$results)
+```
+
+
+## Results & Conclusions
+
+The best out of sample error was provided by the Random Forest algorithm and this was used 
+to predict the final test/problem set with 100% prediction accuracy.   
+
+However, the Random Forest algorithm is computationally intensive, taking 212 seconds on an 
+AMAZON AWS EC2 m4.10x large instance.  
+
+The other algorithms with comparable accuracy (out-of-sample errors) were the other tree based models
+i.e. Bootstrap Aggregating (Bagging) and Bagging with boosting.  
+
+On further evaluating the other tree based algorithms against the final test/problem set, 
+it was found that both gave 100% accurate results on the final test/problem set.   
+
+However the running time for the bagging model was less than a quarter that of 
+the Random Forest with slightly less out-of-sample accuracy, 98% vs 99% out-of-sample accuracy for Random Forest.  
+
+In conclusion, the best algorithm/model to choose to solve this prediction problem is the Bootstrap aggregating 
+or Bagging algorithm, as it has accuracy comparable to that given by the Random Forest algorithm but takes less than 25% of the time that the Random Forest algorithm takes in building the model. 
+
+## Computing environment
+Cloud based computing using an AMAZON AWS EC2 m4.10x large instance.  
+Thanks to Louis Aslett for providing a free virtual machine (AMI) with Ubuntu Linux 16.04 and Rstudio pre-installed and 
+ready to go. 
+The Rstudio AMI Website by Louis Aslett is at: http://www.louisaslett.com/RStudio_AMI/
